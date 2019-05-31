@@ -39,10 +39,11 @@ df1_new['created_date_id'] = pd.to_datetime(df1_new['created_date_id'])
 # From the date id the date field is extracted for further grouping purposes
 df1_new['year'] = df1_new['created_date_id'].dt.year
 df1_new.head(5)
-df1_new.groupby('product_sid').apply(lambda x: x.sort_values(['year'], ascending = True))
+#df1_new.groupby('product_sid').apply(lambda x: x.sort_values(['year'], ascending = True))
 
-# Total units sold of a product for every year.
-product_count = df1_new.groupby(['year', 'product_sid']).size()
+# Total units of product sold added to new column sales_volume  
+df1_new['sales_volume'] = df1_new.groupby(['year', 'product_sid'])['year', 'product_sid'].transform(np.size)
+df1_new.head(5)
 
 print("Content dataframe shape :", df2.shape)
 print("Content dataframe columns :",df2.columns)
@@ -77,7 +78,7 @@ df2.shape
 
 #%% Display the two original dataframes and the merged dataframe
 
-df3 = pd.merge(df1, df2, left_on="product_sid", right_on="ProductId")
+df3 = pd.merge(df1_new, df2, left_on="product_sid", right_on="ProductId")
 print(df3.head())
 print(df3.shape)
 pd.set_option('display.max_rows', 1000)
@@ -85,19 +86,43 @@ print(df3.isna().sum())
 
 print(df3.describe())
 
+
+#%% EDA
+
+import math
+
+def plot_distribution(df1, cols=5, width=20, height=15, hspace=0.2, wspace=0.5):
+    plt.style.use('seaborn-whitegrid')
+    fig = plt.figure(figsize=(width,height))
+    fig.subplots_adjust(left=None, bottom=None, right=None, top=None, wspace=wspace, hspace=hspace)
+    rows = math.ceil(float(df1.shape[1]) / cols)
+    for i, column in enumerate(df1.columns):
+        ax = fig.add_subplot(rows, cols, i + 1)
+        ax.set_title(column)
+        if df1.dtypes[column] == np.object:
+            g = sns.countplot(y=column, data=df1)
+            substrings = [s.get_text()[:18] for s in g.get_yticklabels()]
+            g.set(yticklabels=substrings)
+            plt.xticks(rotation=25)
+        else:
+            g = sns.distplot(df1[column])
+            plt.xticks(rotation=25)
+    
+plot_distribution(df1_new, cols=3, width=20, height=20, hspace=0.45, wspace=0.5)
+plt.show()
 #%% Partial Autocorrelation Plot
 
 from statsmodels.graphics.tsaplots import plot_pacf
 
 #columns = [] #use this for speedup
-columns = ["sales_item_price", 'sales_voucher_created', 'sales_voucher',
+columns = ["sales_item_price', 'sales_voucher_created', 'sales_voucher',
        'sales_value_created', 'sales_value','created_date_id', 'sales_item_price_created',
        'days_since_first_sold', 'days_since_release', 'returned_date_id_0',
-       'returned_date_id_1']
+       'returned_date_id_1','sales_volumne']
 
 for col in columns:
     plt.figure()
-    plot_pacf(df1_new[col].dropna(), lags=48, zero=False)
+    plot_pacf(df1_new[col].dropna(), lags=24, zero=False)
     plt.title("Partial Autocorrelation PLot : " + str(col))
     
 plt.show()
@@ -134,16 +159,10 @@ def plot_pacf_drop(x, ax=None, lags=None, alpha=.05, method='ywunbiased',
 
     import matplotlib.pyplot as plt
 
-#columns = [] #use this for speedup
-columns = ["sales_item_price", 'sales_voucher_created', 'sales_voucher',
-       'sales_value_created', 'sales_value','created_date_id', 'sales_item_price_created',
-       'days_since_first_sold', 'days_since_release', 'returned_date_id_0',
-       'returned_date_id_1']
-
 for col in columns:
 
     plt.figure()
-    plot_pacf_drop(df1_new[col].dropna(), lags=200, drop_no=3, zero=False)
+    plot_pacf_drop(df1_new[col].dropna(), lags=24*7, drop_no=3, zero=False)
     plt.title("Partial Autocorrelation PLot : " + str(col))
     
 plt.show()
@@ -161,7 +180,7 @@ plt.show()
 
 from seglearn.split import temporal_split
 
-X_train, X_else, y_train, y_else = train_test_split(df1_new, df1_new["sales_item_price_created"], test_size=0.2, shuffle=False)
+X_train, X_else, y_train, y_else = train_test_split(df1_new, df1_new["sales_volume"], test_size=0.2, shuffle=False)
 X_valid, X_test, y_valid, y_test = train_test_split(X_else, y_else, test_size=0.5, shuffle=False)
 
 #X_train, X_valid, y_train, y_valid = temporal_split(df1_new, df1_new["sales_item_price_created"], test_size=0.25)
@@ -169,8 +188,8 @@ X_valid, X_test, y_valid, y_test = train_test_split(X_else, y_else, test_size=0.
 #normalizers = minmax_scale(X_train, y_train)
 #%% 
 
-TIME_WINDOW=100
-FORECAST_DISTANCE=24
+TIME_WINDOW=24
+FORECAST_DISTANCE=24*7
 
 from seglearn.transform import FeatureRep, SegmentXYForecast, last
 
